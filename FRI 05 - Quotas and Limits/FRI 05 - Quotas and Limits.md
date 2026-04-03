@@ -51,15 +51,23 @@ cd "FRI 05 - Quotas and Limits"
 ---
 
 ### 🏗️ Step 2: Setting Up Your Workspace
-Let's create our secure sandbox namespace and switch our context over to it.
+Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
+
+Execute the following commands (be sure to change `s1` to your actual assigned ID!):
 
 ```bash
-kubectl create namespace lab
-kubectl config set-context lab-context --current --namespace=lab
-kubectl config use-context lab-context
+# 1. Set your Student ID as a variable
+export NS=s1
+
+# 2. Create your personal namespace
+kubectl create namespace $NS
+
+# 3. Create and switch to a custom context locked to your namespace
+kubectl config set-context ${NS}-context --namespace=$NS
+kubectl config use-context ${NS}-context
 ```
 
-💡 **What is happening here?** We are creating a namespace called `lab` and setting our default context to it so we don't have to type `-n lab` at the end of every command.
+💡 **What is happening here?** By setting the `$NS` variable, your terminal remembers your student ID. By creating and using `${NS}-context`, you are telling Kubernetes to automatically route all future commands directly into your specific namespace. This ensures you don't accidentally delete another student's work!
 
 ---
 
@@ -231,17 +239,17 @@ kubectl describe replicaset web-fleet
 ---
 
 ### 🧹 Lab Cleanup
-To clean up your environment, switch your context back to the default, delete the `lab` namespace, and remove your custom context:
+To clean up your environment, delete your resources, switch back to the default context, and remove your personal namespace.
 
 ```bash
 # Switch back to the default context
 kubectl config use-context default
 
-# Delete the lab namespace
-kubectl delete namespace lab
+# Delete your student namespace
+kubectl delete namespace $NS
 
 # Delete the custom context you created
-kubectl config delete-context lab-context
+kubectl config delete-context ${NS}-context
 ```
 
 ---

@@ -63,25 +63,26 @@ kubectl get pods -n kube-system -l k8s-app=calico-node
 ---
 
 ### 🏗️ Step 3: Setting Up Your Workspace & Labels
-It is a Kubernetes best practice to group related applications together. We will create a dedicated namespace called `lab` to hold our work. 
+Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
 
-Furthermore, in enterprise environments, security policies rarely rely on hardcoded names. Instead, administrators apply **Labels** 🏷️ to namespaces (e.g., `environment=prod`) and write policies targeting those labels.
-
-Create the namespace and label it:
+Execute the following commands (be sure to change `s1` to your actual assigned ID!):
 
 ```bash
-kubectl create namespace lab
-kubectl label namespace lab environment=student-lab
+# 1. Set your Student ID as a variable
+export NS=s1
+
+# 2. Create your personal namespace
+kubectl create namespace $NS
+
+# 3. Label your namespace
+kubectl label namespace $NS environment=student-lab
+
+# 4. Create and switch to a custom context locked to your namespace
+kubectl config set-context ${NS}-context --namespace=$NS
+kubectl config use-context ${NS}-context
 ```
 
-Now, create a specific context for your namespace and switch to using it:
-
-```bash
-kubectl config set-context lab-context --current --namespace=lab
-kubectl config use-context lab-context
-```
-
-💡 **What is happening here?** A Kubernetes **Namespace** is a logical boundary—like a folder—that groups your resources. By attaching the `environment=student-lab` label, we can now write intelligent security rules that apply to this environment. Finally, by creating the `lab-context`, you are telling `kubectl` to send all future commands directly into this namespace. You will no longer need to type `-n lab`!
+💡 **What is happening here?** A Kubernetes **Namespace** is a logical boundary—like a folder—that groups your resources. By attaching the `environment=student-lab` label, we can now write intelligent security rules that apply to this environment. Finally, by creating the `${NS}-context`, you are telling `kubectl` to send all future commands directly into your specific namespace. This ensures you don't accidentally delete another student's work!
 
 ---
 
@@ -342,17 +343,20 @@ kubectl exec client -- ping -c 3 -W 1 1.1.1.1
 ---
 
 ### 🧹 Lab Cleanup
-To clean up your environment, switch your context back to the default, delete the `lab` namespace, and remove your custom context:
+To clean up your environment, delete your resources, switch back to the default context, and remove your personal namespace.
 
 ```bash
+# Delete the network policies
+kubectl delete -f 3-calico-deny.yaml
+
 # Switch back to the default context
 kubectl config use-context default
 
-# Delete the lab namespace
-kubectl delete namespace lab
+# Delete your student namespace
+kubectl delete namespace $NS
 
 # Delete the custom context you created
-kubectl config delete-context lab-context
+kubectl config delete-context ${NS}-context
 ```
 
 ---

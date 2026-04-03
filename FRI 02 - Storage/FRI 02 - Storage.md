@@ -83,14 +83,23 @@ vsan-default-storage-policy-latebinding
 For our lab, we will be using the default storage class provided by the cluster.
 
 🏗️ **Step 3: Setting Up Your Workspace**
-We will isolate our work into a dedicated namespace and configure our CLI context.
+Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
 
-Create the namespace and set your context:
+Execute the following commands (be sure to change `s1` to your actual assigned ID!):
+
 ```bash
-kubectl create namespace storage-lab
-kubectl config set-context storage-context --current --namespace=storage-lab
-kubectl config use-context storage-context
+# 1. Set your Student ID as a variable
+export NS=s1
+
+# 2. Create your personal namespace
+kubectl create namespace $NS
+
+# 3. Create and switch to a custom context locked to your namespace
+kubectl config set-context ${NS}-context --namespace=$NS
+kubectl config use-context ${NS}-context
 ```
+
+💡 **What is happening here?** By setting the `$NS` variable, your terminal remembers your student ID. By creating and using `${NS}-context`, you are telling Kubernetes to automatically route all future commands directly into your specific namespace. This ensures you don't accidentally delete another student's work!
 
 🎫 **Step 4: Requesting Storage (Creating a PVC)**
 Now, let's ask Kubernetes for a persistent disk. We will explicitly tell Kubernetes which Storage Class to use.
@@ -240,7 +249,7 @@ When you tell a StatefulSet to scale to 3 replicas:
 If `db-1` crashes, the StatefulSet restarts it and automatically reattaches its specific, original disk. This ensures sticky identity and ordered storage provisioning, making StatefulSets the gold standard for running databases in Kubernetes!
 
 🧹 **Lab Cleanup**
-To clean up your environment, delete the resources, switch your context back to the default, and delete the custom namespace:
+To clean up your environment, delete the resources, switch your context back to the default, and remove your personal namespace.
 
 ```bash
 # Delete the Pod and PVC
@@ -250,11 +259,11 @@ kubectl delete -f 1-pvc.yaml
 # Switch back to the default context
 kubectl config use-context default
 
-# Delete the lab namespace
-kubectl delete namespace storage-lab
+# Delete your student namespace
+kubectl delete namespace $NS
 
 # Delete the custom context you created
-kubectl config delete-context storage-context
+kubectl config delete-context ${NS}-context
 ```
 
 🎓 **Lab Recap & Review**

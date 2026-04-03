@@ -41,13 +41,23 @@ cd "FRI 03 - Helm"
 💡 **What is happening here?** Kubernetes uses a configuration file (often called `kubeconfig`) to know which cluster to talk to and what credentials to use. By copying the shared config file to your home directory, you are giving your `kubectl` command the "keys" to the cluster. Finally, we navigate to the correct folder so that our YAML files are easy to find.
 
 🏗️ **Step 2: Setting Up Your Workspace**
-We will create a dedicated namespace for the dashboard to keep it isolated from other cluster services.
+Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
+
+Execute the following commands (be sure to change `s1` to your actual assigned ID!):
 
 ```bash
-kubectl create namespace kubernetes-dashboard
-kubectl config set-context dash-context --current --namespace=kubernetes-dashboard
-kubectl config use-context dash-context
+# 1. Set your Student ID as a variable
+export NS=s1
+
+# 2. Create your personal namespace
+kubectl create namespace $NS
+
+# 3. Create and switch to a custom context locked to your namespace
+kubectl config set-context ${NS}-context --namespace=$NS
+kubectl config use-context ${NS}-context
 ```
+
+💡 **What is happening here?** By setting the `$NS` variable, your terminal remembers your student ID. By creating and using `${NS}-context`, you are telling Kubernetes to automatically route all future commands directly into your specific namespace. This ensures you don't accidentally delete another student's work!
 
 🔎 **Step 3: Adding the Dashboard Repository**
 The Dashboard chart is maintained by the official Kubernetes community.
@@ -75,7 +85,7 @@ kubectl create serviceaccount admin-user
 
 **2. Give that user "Cluster Admin" permissions:**
 ```bash
-kubectl create clusterrolebinding admin-user-binding --clusterrole=cluster-admin --serviceaccount=kubernetes-dashboard:admin-user
+kubectl create clusterrolebinding admin-user-binding --clusterrole=cluster-admin --serviceaccount=${NS}:admin-user
 ```
 
 **3. Generate your Login Token:**
@@ -148,9 +158,14 @@ helm uninstall my-harbor
 kubectl delete clusterrolebinding admin-user-binding
 kubectl delete serviceaccount admin-user
 
-# Cleanup namespace
+# Switch back to the default context
 kubectl config use-context default
-kubectl delete namespace kubernetes-dashboard
+
+# Delete your student namespace
+kubectl delete namespace $NS
+
+# Delete the custom context you created
+kubectl config delete-context ${NS}-context
 ```
 
 🎓 **Lab Recap & Review**
