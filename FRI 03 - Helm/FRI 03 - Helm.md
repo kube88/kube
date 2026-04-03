@@ -4,7 +4,7 @@
 
 🎯 **Lab Objective**
 In this lab, you will use Helm to deploy the official Kubernetes Web UI (Dashboard) and an enterprise container registry. You will learn how to:
-* Authenticate with the vSphere cluster.
+* Perform initial cluster configuration.
 * Add official project repositories to Helm.
 * Deploy a complex, multi-resource application (The Dashboard).
 * **Security & Access:** Create an Admin user and generate an authentication token.
@@ -20,13 +20,25 @@ In this lab, you will use Helm to deploy the official Kubernetes Web UI (Dashboa
 📋 **Prerequisites**
 * Access to the command line in your dedicated HOL instance.
 
-🔌 **Step 1: Connect to HOL Lab 2636**
-Execute the following to authenticate with the cluster:
+### 🛠️ Step 0: Initial Configuration
+Before we can interact with the Kubernetes cluster, you must ensure your environment is configured correctly. Run the following commands to set up your Kubernetes configuration:
 
 ```bash
-kubectl vsphere login --vsphere-username=administrator@wld.sso --server=https://10.1.0.2 --insecure-skip-tls-verify
+# 1. Create the .kube directory
+mkdir -p ~/.kube
+
+# 2. Copy the master config file to your local directory
+cp /home/config ~/.kube/config
+
+# 3. Secure the config file permissions
+chmod 600 ~/.kube/config
+
+# 4. Navigate into the lab directory
+cd ~/kube
+cd "FRI 03 - Helm"
 ```
-🔑 **Password Prompt:** `VMware123!VMware123!`
+
+💡 **What is happening here?** Kubernetes uses a configuration file (often called `kubeconfig`) to know which cluster to talk to and what credentials to use. By copying the shared config file to your home directory, you are giving your `kubectl` command the "keys" to the cluster. Finally, we navigate to the correct folder so that our YAML files are easy to find.
 
 🏗️ **Step 2: Setting Up Your Workspace**
 We will create a dedicated namespace for the dashboard to keep it isolated from other cluster services.

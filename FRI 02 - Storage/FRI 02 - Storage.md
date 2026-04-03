@@ -5,8 +5,8 @@
 
 🎯 **Lab Objective**
 In this lab, you will explore how Kubernetes handles stateful applications and persistent data. You will learn how to:
-* Authenticate with the vSphere cluster.
-* Explore and understand the available vSphere Storage Classes in your cluster.
+* Perform initial cluster configuration.
+* Explore and understand the available Storage Classes in your cluster.
 * Establish a secure workspace and context.
 * Create a Persistent Volume Claim (PVC) to dynamically provision storage.
 * Inspect both the local PVCs and the cluster-wide Persistent Volumes (PVs).
@@ -24,19 +24,29 @@ Before jumping into the command line, it is important to understand how Kubernet
 📋 **Prerequisites**
 * Access to the command line in your dedicated HOL instance.
 
-🔌 **Step 1: Connect to HOL Lab 2636**
-To begin, you need to authenticate with the vSphere environment to gain access to the Kubernetes cluster.
-Go to your Command Prompt CLI and execute the following command:
+
+### 🛠️ Step 0: Initial Configuration
+Before we can interact with the Kubernetes cluster, you must ensure your environment is configured correctly. Run the following commands to set up your Kubernetes configuration:
 
 ```bash
-kubectl vsphere login --vsphere-username=administrator@wld.sso --server=https://10.1.0.2 --insecure-skip-tls-verify
-```
-🔑 **Password Prompt:** When prompted for a password, enter: `VMware123!VMware123!`
+# 1. Create the .kube directory
+mkdir -p ~/.kube
 
-💡 **What is happening here?** The `kubectl vsphere` plugin allows you to authenticate directly against the vCenter Single Sign-On (SSO). The `--insecure-skip-tls-verify` flag is used here for the lab environment to bypass certificate validation. Once authenticated, your local `kubeconfig` is updated with temporary credentials so you can issue commands to the cluster.
+# 2. Copy the master config file to your local directory
+cp /home/config ~/.kube/config
+
+# 3. Secure the config file permissions
+chmod 600 ~/.kube/config
+
+# 4. Navigate into the lab directory
+cd ~/kube
+cd "FRI 02 - Storage"
+```
+
+💡 **What is happening here?** Kubernetes uses a configuration file (often called `kubeconfig`) to know which cluster to talk to and what credentials to use. By copying the shared config file to your home directory, you are giving your `kubectl` command the "keys" to the cluster. Finally, we navigate to the correct folder so that our YAML files are easy to find.
 
 🔎 **Step 2: Exploring Storage Classes**
-Before we request storage, we need to see what "profiles" (Storage Classes) are available to us. Because we are running on vSphere, these classes directly map to vCenter Storage Policies.
+Before we request storage, we need to see what "profiles" (Storage Classes) are available to us. These classes define how storage is provisioned on the backend.
 
 Run the following command:
 ```bash
@@ -68,10 +78,9 @@ vsan-default-storage-policy
 vsan-default-storage-policy-latebinding
 ```
 
-💡 **What do these names mean?** * **`regular` vs `thin`:** A `regular` policy generally creates a standard, fully allocated disk. A `thin` policy uses "thin provisioning," meaning it tells vCenter to only consume physical hard drive space as data is actually written to the disk, which saves space on the underlying SAN/vSAN.
-* **`-latebinding`:** Normally, when you request a disk, K8s creates it immediately. However, if a policy has "late binding" (Wait For First Consumer), Kubernetes will wait to create the physical VMDK until a Pod is actually scheduled. This ensures the disk is created on the exact physical ESXi host where the Pod will run. 
+💡 **What do these names mean?** Storage Classes can vary by cluster. Some common parameters include "Reclaim Policy" (what happens to data when a PVC is deleted) and "Volume Binding Mode" (when the volume is physically created). 
 
-For our lab, we will be using the standard **`management-storage-policy-regular`**.
+For our lab, we will be using the default storage class provided by the cluster.
 
 🏗️ **Step 3: Setting Up Your Workspace**
 We will isolate our work into a dedicated namespace and configure our CLI context.
@@ -120,7 +129,7 @@ kubectl get pv
 ```
 *Notice the output! You will see a dynamically generated PV with a long, random name (e.g., `pvc-1a2b3c4d...`). Look at the `CLAIM` column—you will see it is explicitly mapped to `storage-lab/my-data-claim`.*
 
-💡 **What is happening here?** We asked for `1Gi` using the "regular" policy (`get pvc`). Kubernetes saw this request, talked directly to vCenter, created a physical 1GB virtual disk, registered it as a Persistent Volume (`get pv`), and tied the two together. 
+💡 **What is happening here?** We asked for `1Gi` using the defined policy (`get pvc`). Kubernetes saw this request, talked directly to the storage provider, created a physical 1GB disk, registered it as a Persistent Volume (`get pv`), and tied the two together. 
 
 📦 **Step 5: Deploying a Stateful Pod**
 Storage is useless without an application to consume it. Let's deploy an Nginx web server and mount our new volume into its web directory.
@@ -249,7 +258,7 @@ kubectl config delete-context storage-context
 ```
 
 🎓 **Lab Recap & Review**
-* **Storage Classes map to Infrastructure:** 🏭 You saw how a PVC triggered the cluster to automatically provision a real, physical VMDK using a specific vCenter Storage Policy.
+* **Storage Classes map to Infrastructure:** 🏭 You saw how a PVC triggered the cluster to automatically provision a real, physical disk using a specific Storage Class policy.
 * **PVs vs PVCs:** 💽 You successfully inspected both sides of the storage coin—the developer's request (the PVC in your namespace) and the administrator's actual disk (the global PV).
 * **Pods and Storage have separate lifecycles:** 🔄 You proved that destroying a container does not destroy its data.
 * **Storage is mutable (sometimes):** 📈 You learned that modern Kubernetes allows for dynamic volume expansion.

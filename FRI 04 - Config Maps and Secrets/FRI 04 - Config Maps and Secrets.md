@@ -27,16 +27,25 @@ Before jumping into the command line, let's understand the problem we are solvin
 
 ---
 
-### 🔌 Step 1: Connect to HOL Lab 2636
-Authenticate with the vSphere environment to gain access to the Kubernetes cluster.
-
-Execute the following command:
+### 🛠️ Step 0: Initial Configuration
+Before we can interact with the Kubernetes cluster, you must ensure your environment is configured correctly. Run the following commands to set up your Kubernetes configuration:
 
 ```bash
-kubectl vsphere login --vsphere-username=administrator@wld.sso --server=https://10.1.0.2 --insecure-skip-tls-verify
+# 1. Create the .kube directory
+mkdir -p ~/.kube
+
+# 2. Copy the master config file to your local directory
+cp /home/config ~/.kube/config
+
+# 3. Secure the config file permissions
+chmod 600 ~/.kube/config
+
+# 4. Navigate into the lab directory
+cd ~/kube
+cd "FRI 04 - Config Maps and Secrets"
 ```
 
-🔑 **Password Prompt:** When prompted for a password, enter: `VMware123!VMware123!`
+💡 **What is happening here?** Kubernetes uses a configuration file (often called `kubeconfig`) to know which cluster to talk to and what credentials to use. By copying the shared config file to your home directory, you are giving your `kubectl` command the "keys" to the cluster. Finally, we navigate to the correct folder so that our YAML files are easy to find.
 
 ---
 

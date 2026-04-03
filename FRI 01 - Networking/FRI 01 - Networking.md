@@ -4,13 +4,12 @@
 
 ## 🎯 Lab Objective
 In this lab, you will explore how Kubernetes handles network security using Calico as the Container Network Interface (CNI) plugin. You will learn how to:
-1. Authenticate with the vSphere cluster.
-2. Verify Calico's presence in the cluster.
-3. Establish a secure workspace and implement real-world namespace labeling.
-4. Implement a "Namespace Isolation" policy using explicit label selectors.
-5. Adopt a "Zero Trust" model by restricting traffic to specific ports.
-6. Control external Egress traffic to the internet.
-7. **Extension**: Use Calico-specific Custom Resources to explicitly Deny traffic.
+1. Verify Calico's presence in the cluster.
+2. Establish a secure workspace and implement real-world namespace labeling.
+3. Implement a "Namespace Isolation" policy using explicit label selectors.
+4. Adopt a "Zero Trust" model by restricting traffic to specific ports.
+5. Control external Egress traffic to the internet.
+6. **Extension**: Use Calico-specific Custom Resources to explicitly Deny traffic.
 
 ---
 
@@ -28,18 +27,25 @@ Before jumping into the command line, it is important to understand the tools we
 
 ---
 
-### 🔌 Step 1: Connect to HOL Lab 2636
-To begin, you need to authenticate with the vSphere environment to gain access to the Kubernetes cluster. 
-
-Go to your Command Prompt CLI and execute the following command:
+### 🛠️ Step 0: Initial Configuration
+Before we can interact with the Kubernetes cluster, you must ensure your environment is configured correctly. Run the following commands to set up your Kubernetes configuration:
 
 ```bash
-kubectl vsphere login --vsphere-username=administrator@wld.sso --server=https://10.1.0.2 --insecure-skip-tls-verify
+# 1. Create the .kube directory
+mkdir -p ~/.kube
+
+# 2. Copy the master config file to your local directory
+cp /home/config ~/.kube/config
+
+# 3. Secure the config file permissions
+chmod 600 ~/.kube/config
+
+# 4. Navigate into the lab directory
+cd ~/kube
+cd "FRI 01 - Networking"
 ```
 
-🔑 **Password Prompt:** When prompted for a password, enter: `VMware123!VMware123!`
-
-💡 **What is happening here?** The `kubectl vsphere` plugin allows you to authenticate directly against the vCenter Single Sign-On (SSO). The `--insecure-skip-tls-verify` flag is used here for the lab environment to bypass certificate validation against the internal `10.1.0.2` server. Once authenticated, a file on your computer (the `kubeconfig`) is updated with temporary credentials so you can issue commands to the cluster.
+💡 **What is happening here?** Kubernetes uses a configuration file (often called `kubeconfig`) to know which cluster to talk to and what credentials to use. By copying the shared config file to your home directory, you are giving your `kubectl` command the "keys" to the cluster. Finally, we navigate to the correct folder so that our YAML files are easy to find.
 
 ---
 

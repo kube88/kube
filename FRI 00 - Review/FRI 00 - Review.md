@@ -26,11 +26,32 @@ Before jumping in, let's establish what a Deployment actually does:
 * Your assigned Student ID (e.g., `s1`, `s2`, ... `s12`).
 
 ---
-### Ensure you have a kubectl config file. 
+
+### 🛠️ Step 0: Initial Configuration
+Before we can interact with the Kubernetes cluster, you must ensure your environment is configured correctly. Run the following commands to set up your Kubernetes configuration and download the lab files:
 
 ```bash
-cp /home/config ~/.kube/
+# 1. Create the .kube directory
+mkdir -p ~/.kube
+
+# 2. Copy the master config file to your local directory
+cp /home/config ~/.kube/config
+
+# 3. Secure the config file permissions
+chmod 600 ~/.kube/config
+
+# 4. Clone the lab repository and enter the lab directory
+cd ~
+git clone https://github.com/kube88/kube.git
+cd kube
+cd "FRI 00 - Review"
 ```
+
+💡 **What is happening here?** 
+* **Kubeconfig:** Kubernetes uses a configuration file to know which cluster to talk to and what credentials to use. By copying the shared config file to your home directory, you are giving your `kubectl` command the "keys" to the cluster.
+* **Git Clone:** You are downloading all the YAML files and instructions from GitHub so you have everything you need locally on your server.
+
+---
 
 ### 🔌 Step 1: Setup Your Workspace
 Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
