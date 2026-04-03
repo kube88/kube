@@ -2,6 +2,7 @@ apiVersion: crd.projectcalico.org/v1
 kind: NetworkPolicy
 metadata:
   name: deny-google-dns
+  namespace: $NS
 spec:
   order: 10 # Lower numbers are evaluated first
   selector: app == 'client' # Calico uses a slightly different selector syntax

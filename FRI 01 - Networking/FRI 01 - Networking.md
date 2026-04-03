@@ -1,7 +1,4 @@
 
-
-kubectl config set-context ${NS}-context --namespace=$NS --username=admin --cluster=vke-1057e5ab-738e-4d02-af04-35add3ea7170
-
 # 🛡️ Kubernetes Security Lab: Calico Network Policies
 
 ## 🎯 Lab Objective
@@ -67,7 +64,7 @@ kubectl get pods -n kube-system -l k8s-app=calico-node
 ### 🏗️ Step 3: Setting Up Your Workspace & Labels
 Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
 
-Execute the following commands (be sure to change `s1` to your actual assigned ID!):
+Execute the following command (be sure to change `s1` to your actual assigned ID!):
 
 ```bash
 # 1. Set your Student ID as a variable
@@ -79,26 +76,23 @@ kubectl create namespace $NS
 
 # 3. Label your namespace
 kubectl label namespace $NS environment=student-lab
-
-# 4. Create and switch to a custom context locked to your namespace
-kubectl config set-context ${NS}-context --namespace=$NS
-kubectl config use-context ${NS}-context
 ```
 
-💡 **What is happening here?** A Kubernetes **Namespace** is a logical boundary—like a folder—that groups your resources. By attaching the `environment=student-lab` label, we can now write intelligent security rules that apply to this environment. Finally, by creating the `${NS}-context`, you are telling `kubectl` to send all future commands directly into your specific namespace. This ensures you don't accidentally delete another student's work!
+💡 **What is happening here?** A Kubernetes **Namespace** is a logical boundary—like a folder—that groups your resources. By attaching the `environment=student-lab` label, we can now write intelligent security rules that apply to this environment. We use the `$NS` variable in all future commands to ensure you are only interacting with your own resources!
 
 ---
 
 ### 🔐 Step 4: Enforcing Namespace Isolation
-Our first security goal is to fix the "flat network" problem. Imagine this cluster is shared by multiple teams. We want to lock down the `lab` namespace so our pods can *only* talk to other pods inside namespaces labeled `environment=student-lab`.
+Our first security goal is to fix the "flat network" problem. Imagine this cluster is shared by multiple teams. We want to lock down your namespace so your pods can *only* talk to other pods inside namespaces labeled `environment=student-lab`.
 
-Create a file named `1-namespace-isolation.yaml`:
+Create a file named `1-namespace-isolation.yaml` (or use the one provided):
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: namespace-isolation
+  namespace: $NS
 spec:
   podSelector: {} # 1. The Target: Applies this policy to ALL pods in our namespace
   policyTypes:
@@ -125,10 +119,13 @@ spec:
       protocol: TCP
 ```
 
-Apply the policy:
+Apply the policy using `envsubst` to inject your namespace:
 ```bash
-kubectl apply -f 1-namespace-isolation.yaml
+envsubst < 1-namespace-isolation.yaml | kubectl apply -f -
 ```
+
+⚠️ **Troubleshooting:** If you see an error saying `failed to download openapi`, you can bypass it by adding `--validate=false`:
+`envsubst < 1-namespace-isolation.yaml | kubectl apply -f - --validate=false`
 
 💡 **What is happening here?**
 * **The Target:** `podSelector: {}` acts as a wildcard, telling Calico to wrap this firewall around **all** pods in our namespace.
@@ -143,17 +140,17 @@ Let's deploy two pods to test our policies: a Web server and a Client pod.
 
 Deploy an Nginx web server and expose it as a Service:
 ```bash
-kubectl run web --image=nginx --labels="app=web" --expose --port=80
+kubectl run web --image=nginx --labels="app=web" --expose --port=80 -n $NS
 ```
 
 Deploy a temporary Client pod (we will use an Alpine Linux image with `curl` installed so we can easily test HTTP requests):
 ```bash
-kubectl run client --image=alpine/curl --labels="app=client" -- sleep 3600
+kubectl run client --image=alpine/curl --labels="app=client" -n $NS -- sleep 3600
 ```
 
-Verify both pods are running (Notice you don't need to specify your namespace here because of your context!):
+Verify both pods are running:
 ```bash
-kubectl get pods,svc
+kubectl get pods,svc -n $NS
 ```
 
 ---
@@ -162,7 +159,7 @@ kubectl get pods,svc
 Let's execute a command from inside our `client` pod to see if it can reach the `web` pod.
 
 ```bash
-kubectl exec client -- curl -s --connect-timeout 3 http://web
+kubectl exec client -n $NS -- curl -s --connect-timeout 3 http://web
 ```
 ✅ *You should see the "Welcome to nginx!" HTML output.* 💡 **Why did this work?** Because both pods exist inside a namespace that possesses the `environment=student-lab` label. If an application in an untagged namespace tried to curl your web pod, Calico would drop the connection and it would eventually time out.
 
@@ -173,14 +170,14 @@ While namespace isolation is good, it's not perfect. If a hacker breaches your `
 
 The **Zero Trust** philosophy dictates "Least Privilege"—entities should only have the exact access they need to function, and nothing more. Let's tighten this up so the web server *only* accepts traffic on Port 80.
 
-⚠️ **Important Concept:** Kubernetes NetworkPolicies are **additive**. This means they only grant access; they never explicitly deny it. Because our previous `namespace-isolation` policy already allows *all* traffic between pods, adding a new rule for Port 80 won't restrict other ports. To achieve true Zero Trust, we must delete our broad isolation policy and replace it with a strict Default Deny foundation.
+⚠️ **Important Concept:** Kubernetes NetworkPolicies are **additive**. This means they only grant access; they never explicitly deny it. To achieve true Zero Trust, we must delete our broad isolation policy and replace it with a strict Default Deny foundation.
 
 Delete the broad policy:
 ```bash
-kubectl delete networkpolicy namespace-isolation
+kubectl delete networkpolicy namespace-isolation -n $NS
 ```
 
-Create a new file named `2-strict-security.yaml`:
+Create a new file named `2-strict-security.yaml` (or use the one provided):
 
 ```yaml
 ---
@@ -189,6 +186,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
+  namespace: $NS
 spec:
   podSelector: {}
   policyTypes:
@@ -200,6 +198,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns-egress
+  namespace: $NS
 spec:
   podSelector: {}
   policyTypes:
@@ -216,6 +215,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-web-port80
+  namespace: $NS
 spec:
   podSelector:
     matchLabels:
@@ -236,6 +236,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-client-egress
+  namespace: $NS
 spec:
   podSelector:
     matchLabels:
@@ -254,7 +255,7 @@ spec:
 
 Apply the new strict policies:
 ```bash
-kubectl apply -f 2-strict-security.yaml
+envsubst < 2-strict-security.yaml | kubectl apply -f -
 ```
 
 💡 **What is happening here?** We have broken our security posture into three distinct, manageable pieces. We lay down a total lockdown foundation 🧱, we poke a small hole for DNS infrastructure 🌐, and then we create highly specific, label-based rules allowing only exactly what our application needs to function (Client -> Web over Port 80) 🚪.
@@ -268,44 +269,45 @@ Let's act as an attacker trying to pivot through the network to prove Calico is 
 **Test 1: Can the client access Port 80? (Should SUCCEED ✅)**
 This is legitimate application traffic.
 ```bash
-kubectl exec client -- curl -s --connect-timeout 3 http://web
+kubectl exec client -n $NS -- curl -s --connect-timeout 3 http://web
 ```
 *Result: You should see the Nginx HTML output.*
 
 **Test 2: Can the client ping the web pod? (Should FAIL ❌)**
 Hackers often use ICMP (Ping) to map out internal networks. Let's find the web pod's IP and try to ping it:
 ```bash
-WEB_IP=$(kubectl get pod web --template '{{.status.podIP}}')
-kubectl exec client -- ping -c 3 -W 1 $WEB_IP
+WEB_IP=$(kubectl get pod web -n $NS --template '{{.status.podIP}}')
+kubectl exec client -n $NS -- ping -c 3 -W 1 $WEB_IP
 ```
 *Result: 100% packet loss. Calico drops the ICMP packets because they do not match our strict "Port 80 TCP" rule!*
 
 **Test 3: Can the client reach the public internet? (Should FAIL ❌)**
 If an attacker compromises a pod, their first move is often to download malware from the internet or establish a Command & Control (C2) connection.
 ```bash
-kubectl exec client -- curl -s --connect-timeout 3 http://google.com
+kubectl exec client -n $NS -- curl -s --connect-timeout 3 http://google.com
 ```
 *Result: Connection timed out. Our `default-deny-all` blocks external Egress traffic, keeping the compromised pod quarantined.*
 
 ---
 
 ### 🌟 Extension Lab: Advanced Calico Policies (Explicit Deny)
-Native Kubernetes `NetworkPolicy` objects only support **Allow** rules (they are purely additive). But what if you want to allow all outbound traffic *except* for one specific malicious IP address? 
+Native Kubernetes `NetworkPolicy` objects only support **Allow** rules. But what if you want to allow all outbound traffic *except* for one specific malicious IP address? 
 
 Because Calico is our CNI, we can use Calico's own Custom Resource Definitions (CRDs) to create explicit **Deny** rules and establish rule **Ordering**.
 
-First, let's delete our strict native policies so the client can reach the internet again:
+First, let's delete our strict native policies:
 ```bash
-kubectl delete -f 2-strict-security.yaml
+envsubst < 2-strict-security.yaml | kubectl delete -f -
 ```
 
-Create a file named `3-calico-deny.yaml`. Notice the `apiVersion` is `crd.projectcalico.org/v1` instead of `networking.k8s.io/v1`:
+Create a file named `3-calico-deny.yaml` (or use the one provided):
 
 ```yaml
 apiVersion: crd.projectcalico.org/v1
 kind: NetworkPolicy
 metadata:
   name: deny-google-dns
+  namespace: $NS
 spec:
   order: 10 # Lower numbers are evaluated first
   selector: app == 'client' # Calico uses a slightly different selector syntax
@@ -321,45 +323,31 @@ spec:
 
 Apply the Calico policy:
 ```bash
-kubectl apply -f 3-calico-deny.yaml
+envsubst < 3-calico-deny.yaml | kubectl apply -f -
 ```
 
 **Test the Explicit Deny:**
 Try to ping Google's Primary DNS (8.8.8.8). This should **FAIL ❌** because of our explicit Deny rule:
 ```bash
-kubectl exec client -- ping -c 3 -W 1 8.8.8.8
+kubectl exec client -n $NS -- ping -c 3 -W 1 8.8.8.8
 ```
 
 Now try to ping Cloudflare's DNS (1.1.1.1). This should **SUCCEED ✅** because of our Catch-All Allow rule at the bottom of the policy:
 ```bash
-kubectl exec client -- ping -c 3 -W 1 1.1.1.1
+kubectl exec client -n $NS -- ping -c 3 -W 1 1.1.1.1
 ```
 
 ---
 
-### ⚠️ Common Mistakes & Troubleshooting
-* **Forgetting the DNS Rule:** 🤕 The most common mistake when writing a Default Deny Egress policy is forgetting to allow Port 53 (TCP/UDP). If pods cannot reach CoreDNS, they cannot resolve service names like `http://web`. This makes it look like your internal port rules are broken when it's actually just a DNS failure.
-* **Overlapping Policies:** 🥞 Kubernetes NetworkPolicies are additive. If you have an old policy that allows `Ingress: {}` (all traffic), adding a new policy that restricts traffic to Port 80 will **not** work. The most permissive rule always wins. Always delete broad policies before testing strict ones.
-* **Label Typos:** 🐛 `podSelector` relies entirely on labels. If your pod has the label `app=web-server` but your NetworkPolicy looks for `app=web`, the policy will not match the pod, leaving it completely unprotected or totally blocked.
-* **Context Confusion:** 🤷‍♂️ If you get "NotFound" errors, verify you are working in the correct namespace using `kubectl config current-context`.
-
----
-
 ### 🧹 Lab Cleanup
-To clean up your environment, delete your resources, switch back to the default context, and remove your personal namespace.
+To clean up your environment, delete your resources and remove your personal namespace.
 
 ```bash
 # Delete the network policies
-kubectl delete -f 3-calico-deny.yaml
-
-# Switch back to the default context
-kubectl config use-context default
+envsubst < 3-calico-deny.yaml | kubectl delete -f -
 
 # Delete your student namespace
 kubectl delete namespace $NS
-
-# Delete the custom context you created
-kubectl config delete-context ${NS}-context
 ```
 
 ---
@@ -367,13 +355,9 @@ kubectl config delete-context ${NS}-context
 ### 🎓 Lab Recap & Review
 Congratulations on completing the lab! Let's quickly review the core concepts you just put into practice:
 
-* **Contexts & Labels are your friends:** 🏷️ You learned how to use `kubectl config` to streamline your workflow and how enterprise environments use **Labels** (like `environment=student-lab`) instead of hardcoded names to manage security policies dynamically.
+* **Labels are your friends:** 🏷️ You learned how enterprise environments use **Labels** (like `environment=student-lab`) instead of hardcoded names to manage security policies dynamically.
 * **The "Flat Network" is dangerous:** 🔓 Out of the box, Kubernetes allows all pods to communicate. We fixed this by introducing the concept of **Namespace Isolation**.
 * **Zero Trust starts with Default Deny:** 🧱 Because Kubernetes NetworkPolicies are *additive* (they only grant permission), true security requires laying down a "Default Deny" policy first, and then poking precise holes for required traffic.
 * **Don't forget DNS!** 🌐 Blocking Egress traffic breaks DNS resolution. You must explicitly allow UDP/TCP Port 53 to your cluster's CoreDNS, or your pods won't be able to find each other by name.
 * **Granular Application Security:** 🚪 We moved beyond basic isolation to application-specific rules, ensuring our Web server only accepted traffic on its operational port (TCP 80), blocking malicious scanning attempts like ICMP (Ping).
 * **Native K8s vs. Calico CRDs:** ⚖️ You experienced the limitations of native Kubernetes policies (Allow only) and how leveraging Calico's Custom Resource Definitions unlocks advanced firewall capabilities like explicit **Deny** rules and policy **Ordering**.
-
-***
-
-Does this final version look ready to publish to your GitHub repository, or are there any other sections you'd like to refine?

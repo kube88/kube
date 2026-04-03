@@ -1,4 +1,3 @@
-kubectl config set-context ${NS}-context --namespace=$NS --username=admin --cluster=vke-1057e5ab-738e-4d02-af04-35add3ea7170
 ***
 
 # 🚀 Kubernetes Core Lab: Mastering Deployments
@@ -6,7 +5,7 @@ kubectl config set-context ${NS}-context --namespace=$NS --username=admin --clus
 ## 🎯 Lab Objective
 In this lab, you will explore the most common way to run applications in Kubernetes: The Deployment. Because you are working on a **shared cluster**, you will first secure your own isolated workspace. You will learn how to:
 1. Prepare an isolated workspace using variables.
-2. Deploy an application declaratively using a YAML manifest.
+2. Deploy an application declaratively using a YAML manifest and dynamic variables.
 3. Scale the application up and down.
 4. Perform a zero-downtime Rolling Update to a new application version.
 5. Perform a Rollback to undo a bad update.
@@ -56,7 +55,7 @@ cd "FRI 00 - Review"
 ### 🔌 Step 1: Setup Your Workspace
 Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
 
-Execute the following commands (be sure to change `s1` to your actual assigned ID!):
+Execute the following command (be sure to change `s1` to your actual assigned ID!):
 
 ```bash
 # 1. Set your Student ID as a variable
@@ -65,28 +64,23 @@ export NS=s1
 ```bash
 # 2. Create your personal namespace
 kubectl create namespace $NS
-
-# 3. Create and switch to a custom context locked to your namespace
-kubectl config set-context ${NS}-context-current --namespace=$NS
-kubectl config use-context ${NS}-context-current
 ```
 
-💡 **What is happening here?** By setting the `$NS` variable, your terminal remembers your student ID. By creating and using `${NS}-context`, you are telling Kubernetes to automatically route all future commands directly into your specific namespace. This ensures you don't accidentally delete another student's work!
+💡 **What is happening here?** By setting the `$NS` variable, your terminal remembers your student ID. We use this variable in all future commands to ensure you are only interacting with your own resources and not accidentally deleting another student's work!
 
 ---
 
 ### 📝 Step 2: Create a Deployment (Declarative Method)
 While you can create Deployments via single-line commands, the industry standard is to use declarative YAML files so your infrastructure can be tracked in version control (like Git). 
 
-*(Note: You do not need to put your namespace in this YAML file, because your Context is already handling it automatically!)*
-
-Create a file named `deployment.yaml`:
+Create a file named `deployment.yaml` (or use the one already in the folder):
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend-web
+  namespace: $NS
   labels:
     app: nginx
 spec:
@@ -106,12 +100,15 @@ spec:
         - containerPort: 80
 ```
 
-Apply the deployment to your cluster:
+Apply the deployment to your cluster using `envsubst` to inject your namespace:
 ```bash
-kubectl apply -f deployment.yaml
+envsubst < deployment.yaml | kubectl apply -f -
 ```
 
-💡 **What is happening here?** You just handed a blueprint to Kubernetes. The Deployment controller reads the blueprint and creates a ReplicaSet. That ReplicaSet then spins up exactly `3` Pods inside your `$NS` namespace running the `nginx:1.14.2` image. 
+⚠️ **Troubleshooting:** If you see an error saying `failed to download openapi`, you can bypass it by adding `--validate=false`:
+`envsubst < deployment.yaml | kubectl apply -f - --validate=false`
+
+💡 **What is happening here?** You just handed a blueprint to Kubernetes. The `envsubst` command takes your `$NS` variable and swaps it into the YAML file before sending it to Kubernetes. The Deployment controller then creates a ReplicaSet, which spins up exactly `3` Pods inside your personal namespace.
 
 ---
 
@@ -120,7 +117,7 @@ Let's look at the resources Kubernetes created just for you.
 
 View your Deployments, ReplicaSets, and Pods:
 ```bash
-kubectl get deployments,replicasets,pods
+kubectl get deployments,replicasets,pods -n $NS
 ```
 
 * **Deployments:** You should see `frontend-web` with `3/3` ready.
@@ -134,15 +131,15 @@ Imagine your web application suddenly gets a spike in traffic. We need to scale 
 
 Scale the deployment up to 5 replicas:
 ```bash
-kubectl scale deployment frontend-web --replicas=5
+kubectl scale deployment frontend-web --replicas=5 -n $NS
 ```
 
 Watch the pods spin up in real-time (press `Ctrl+C` to exit the watch screen):
 ```bash
-kubectl get pods -w
+kubectl get pods -n $NS -w
 ```
 
-💡 **What is happening here?** We used an imperative command to change the desired state from 3 to 5. The ReplicaSet immediately noticed the discrepancy between the *desired state* (5) and the *actual state* (3) and spun up 2 more pods to fulfill the request.
+💡 **What is happening here?** We used an imperative command to change the desired state from 3 to 5. The ReplicaSet immediately noticed the discrepancy and spun up 2 more pods to fulfill the request.
 
 ---
 
@@ -151,17 +148,17 @@ The development team just released a new version of the frontend. We need to upd
 
 Update the image version:
 ```bash
-kubectl set image deployment/frontend-web nginx=nginx:1.16.1
+kubectl set image deployment/frontend-web nginx=nginx:1.16.1 -n $NS
 ```
 
 Check the rollout status to ensure it completes successfully:
 ```bash
-kubectl rollout status deployment/frontend-web
+kubectl rollout status deployment/frontend-web -n $NS
 ```
 
 Now, check your ReplicaSets again:
 ```bash
-kubectl get replicasets
+kubectl get replicasets -n $NS
 ```
 
 💡 **What is happening here?** You will now see **two** ReplicaSets. The Deployment created a new ReplicaSet for the new image version, scaled it up, and slowly scaled the old ReplicaSet down to `0`. The old ReplicaSet is kept around just in case we need to go back!
@@ -173,17 +170,17 @@ Uh oh! The new `1.16.1` version has a critical bug, and the users are complainin
 
 Check your rollout history to see previous versions:
 ```bash
-kubectl rollout history deployment/frontend-web
+kubectl rollout history deployment/frontend-web -n $NS
 ```
 
 Undo the latest rollout to revert to the previous working state:
 ```bash
-kubectl rollout undo deployment/frontend-web
+kubectl rollout undo deployment/frontend-web -n $NS
 ```
 
 Verify the rollback was successful by checking the image version currently running:
 ```bash
-kubectl describe deployment frontend-web | grep Image:
+kubectl describe deployment frontend-web -n $NS | grep Image:
 ```
 
 💡 **What is happening here?** The Deployment simply scaled the *old* ReplicaSet back up to 5, and scaled the *new* (broken) ReplicaSet down to 0. You successfully mitigated a production outage in seconds!
@@ -191,20 +188,14 @@ kubectl describe deployment frontend-web | grep Image:
 ---
 
 ### 🧹 Lab Cleanup
-To clean up your environment, delete your Deployment, return to the default context, and remove your personal namespace.
+To clean up your environment, delete your resources and remove your personal namespace.
 
 ```bash
 # Delete the deployment
-kubectl delete -f deployment.yaml
-
-# Switch back to the default context
-kubectl config use-context default
+envsubst < deployment.yaml | kubectl delete -f -
 
 # Delete your student namespace
 kubectl delete namespace $NS
-
-# Delete the custom context you created
-kubectl config delete-context ${NS}-context
 ```
 
 ---
@@ -212,7 +203,7 @@ kubectl config delete-context ${NS}-context
 ### 🎓 Lab Recap & Review
 Congratulations on completing the lab! Let's review the core concepts you just put into practice:
 
-* **Contexts Keep Shared Clusters Safe:** 🤝 By using a variable (`$NS`) and locking your context to a specific namespace, you can safely write and deploy YAML files in a shared cluster without hardcoding namespace names or overwriting a classmate's work.
+* **Variables Keep Shared Clusters Safe:** 🤝 By using a variable (`$NS`) and `envsubst`, you can safely write and deploy YAML files in a shared cluster without hardcoding namespace names or overwriting a classmate's work.
 * **Deployments > Pods:** 🏗️ You learned that you rarely create Pods directly. You create Deployments, which manage ReplicaSets, which in turn ensure your Pods stay alive and healthy.
 * **Imperative Scaling is Fast:** 📈 You can rapidly adjust to web traffic spikes using a simple `kubectl scale` command, letting Kubernetes handle the heavy lifting of scheduling the new containers.
 * **Zero-Downtime Rollouts:** 🔄 By changing the image version in a Deployment, Kubernetes automatically performs a Rolling Update, standing up the new application before tearing down the old one.

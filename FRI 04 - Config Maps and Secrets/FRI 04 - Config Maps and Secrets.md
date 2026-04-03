@@ -52,7 +52,7 @@ cd "FRI 04 - Config Maps and Secrets"
 ### 🏗️ Step 2: Setting Up Your Workspace
 Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
 
-Execute the following commands (be sure to change `s1` to your actual assigned ID!):
+Execute the following command (be sure to change `s1` to your actual assigned ID!):
 
 ```bash
 # 1. Set your Student ID as a variable
@@ -61,13 +61,9 @@ export NS=s1
 ```bash
 # 2. Create your personal namespace
 kubectl create namespace $NS
-
-# 3. Create and switch to a custom context locked to your namespace
-kubectl config set-context ${NS}-context --namespace=$NS
-kubectl config use-context ${NS}-context
 ```
 
-💡 **What is happening here?** By setting the `$NS` variable, your terminal remembers your student ID. By creating and using `${NS}-context`, you are telling Kubernetes to automatically route all future commands directly into your specific namespace. This ensures you don't accidentally delete another student's work!
+💡 **What is happening here?** By setting the `$NS` variable, your terminal remembers your student ID. We use this variable in all future commands to ensure you are only interacting with your own resources!
 
 ---
 
@@ -77,16 +73,16 @@ Let's pretend we have a web application, and we want to control its UI theme and
 Create a ConfigMap using the `--from-literal` flag:
 
 ```bash
-kubectl create configmap ui-config --from-literal=theme=dark-mode --from-literal=language=english
+kubectl create configmap ui-config --from-literal=theme=dark-mode --from-literal=language=english -n $NS
 ```
 
 Verify it was created:
 ```bash
-kubectl get configmaps
-kubectl describe configmap ui-config
+kubectl get configmaps -n $NS
+kubectl describe configmap ui-config -n $NS
 ```
 
-💡 **What is happening here?** We created a ConfigMap named `ui-config`. Inside it, we stored two distinct key-value pairs: `theme` and `language`. The `kubectl describe` command allows you to view the raw data stored inside.
+💡 **What is happening here?** We created a ConfigMap named `ui-config` inside your personal namespace. Inside it, we stored two distinct key-value pairs: `theme` and `language`. The `kubectl describe` command allows you to view the raw data stored inside.
 
 ---
 
@@ -96,13 +92,13 @@ Now let's pretend our application needs to connect to a backend database. We can
 Create a Kubernetes Secret:
 
 ```bash
-kubectl create secret generic db-credentials --from-literal=username=admin --from-literal=password=SuperSecret123!
+kubectl create secret generic db-credentials --from-literal=username=admin --from-literal=password=SuperSecret123! -n $NS
 ```
 
 Verify it was created, but try to read the data:
 ```bash
-kubectl get secret
-kubectl describe secret db-credentials
+kubectl get secret -n $NS
+kubectl describe secret db-credentials -n $NS
 ```
 
 💡 **What is happening here?** Notice the difference? When you describe the Secret, Kubernetes **hides the values**. It tells you the keys (`username` and `password`) exist and how many bytes they are, but it protects the actual text from prying eyes on the command line.
@@ -112,13 +108,14 @@ kubectl describe secret db-credentials
 ### 💉 Step 5: Injecting as Environment Variables
 We have our configuration data floating in the cluster. Now we need to give it to an application. The most common way to do this is by injecting the data as Environment Variables.
 
-Create a file named `1-env-pod.yaml`:
+Create a file named `1-env-pod.yaml` (or use the one provided):
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: env-test-pod
+  namespace: $NS
 spec:
   containers:
   - name: my-app
@@ -140,12 +137,16 @@ spec:
           key: password
 ```
 
-Apply the Pod:
+Apply the Pod using `envsubst` to inject your namespace:
 ```bash
-kubectl apply -f 1-env-pod.yaml
+envsubst < 1-env-pod.yaml | kubectl apply -f -
 ```
 
-💡 **What is happening here?** Inside the `env` section, we are creating standard Linux environment variables (`APP_THEME` and `DB_PASSWORD`). However, instead of hardcoding their values, we are using `valueFrom` to dynamically grab the data from the ConfigMap and Secret we created earlier.
+⚠️ **Troubleshooting:** If you see an error saying `failed to download openapi`, you can bypass it by adding `--validate=false`:
+`envsubst < 1-env-pod.yaml | kubectl apply -f - --validate=false`
+
+💡 **What is happening here?**
+ Inside the `env` section, we are creating standard Linux environment variables (`APP_THEME` and `DB_PASSWORD`). However, instead of hardcoding their values, we are using `valueFrom` to dynamically grab the data from the ConfigMap and Secret we created earlier.
 
 ---
 
@@ -155,7 +156,7 @@ Let's jump *inside* the running pod and see if our application can see the confi
 Execute the `env` command inside the pod and filter for our specific variables:
 
 ```bash
-kubectl exec env-test-pod -- env | grep -E 'APP_THEME|DB_PASSWORD'
+kubectl exec env-test-pod -n $NS -- env | grep -E 'APP_THEME|DB_PASSWORD'
 ```
 
 ✅ *Result: You should see `APP_THEME=dark-mode` and `DB_PASSWORD=SuperSecret123!` printed to your screen.*
@@ -165,13 +166,14 @@ kubectl exec env-test-pod -- env | grep -E 'APP_THEME|DB_PASSWORD'
 ### 📂 Step 7: Mounting as Volumes (Files)
 Sometimes, applications don't read environment variables. They expect to find a configuration *file* (like `config.json`) sitting on the hard drive. Kubernetes can take a ConfigMap or Secret and mount it as a physical file inside the container!
 
-Create a file named `2-volume-pod.yaml`:
+Create a file named `2-volume-pod.yaml` (or use the one provided):
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: vol-test-pod
+  namespace: $NS
 spec:
   containers:
   - name: my-app
@@ -196,9 +198,9 @@ spec:
       secretName: db-credentials
 ```
 
-Apply the Pod:
+Apply the Pod using `envsubst`:
 ```bash
-kubectl apply -f 2-volume-pod.yaml
+envsubst < 2-volume-pod.yaml | kubectl apply -f -
 ```
 
 💡 **What is happening here?** This is a two-step process. First, at the bottom under `volumes:`, we tell the Pod to treat our ConfigMap and Secret as storage drives. Second, under `volumeMounts:`, we tell the container exactly which folder path to attach those drives to.
@@ -210,17 +212,17 @@ Let's jump into the second pod and explore the file system.
 
 First, list the contents of the `/etc/my-config` directory:
 ```bash
-kubectl exec vol-test-pod -- ls /etc/my-config
+kubectl exec vol-test-pod -n $NS -- ls /etc/my-config
 ```
 *Result: You will see two files named `language` and `theme`.* Now, read the contents of the `theme` file:
 ```bash
-kubectl exec vol-test-pod -- cat /etc/my-config/theme
+kubectl exec vol-test-pod -n $NS -- cat /etc/my-config/theme
 ```
 *Result: It will print `dark-mode`.*
 
 Read the contents of the secret file:
 ```bash
-kubectl exec vol-test-pod -- cat /etc/my-secrets/password
+kubectl exec vol-test-pod -n $NS -- cat /etc/my-secrets/password
 ```
 *Result: It will print `SuperSecret123!`.*
 
@@ -230,7 +232,7 @@ kubectl exec vol-test-pod -- cat /etc/my-secrets/password
 * **Secrets are Base64 Encoded, NOT Encrypted!** 🚨 A common misconception is that Kubernetes Secrets are highly secure. By default, they are simply Base64 encoded. 
   Let's prove it. Run this command to view the raw YAML of your secret:
   ```bash
-  kubectl get secret db-credentials -o yaml
+  kubectl get secret db-credentials -n $NS -o yaml
   ```
   Look at the `password` field. It looks like gibberish (`U3VwZXJTZWNyZXQxMjMh`). Now, let's decode it:
   ```bash
@@ -244,17 +246,19 @@ kubectl exec vol-test-pod -- cat /etc/my-secrets/password
 ---
 
 ### 🧹 Lab Cleanup
-To clean up your environment, delete your resources, switch back to the default context, and remove your personal namespace.
+To clean up your environment, delete your resources and remove your personal namespace.
 
 ```bash
-# Switch back to the default context
-kubectl config use-context default
+# Delete the pods
+envsubst < 2-volume-pod.yaml | kubectl delete -f -
+envsubst < 1-env-pod.yaml | kubectl delete -f -
+
+# Delete the ConfigMap and Secret
+kubectl delete configmap ui-config -n $NS
+kubectl delete secret db-credentials -n $NS
 
 # Delete your student namespace
 kubectl delete namespace $NS
-
-# Delete the custom context you created
-kubectl config delete-context ${NS}-context
 ```
 
 ---

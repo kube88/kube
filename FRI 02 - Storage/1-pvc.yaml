@@ -2,6 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: my-data-claim
+  namespace: $NS
 spec:
   storageClassName: vultr-block-storage 
   accessModes:
