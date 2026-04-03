@@ -1,5 +1,7 @@
 
 
+kubectl config set-context ${NS}-context --namespace=$NS --username=admin --cluster=vke-1057e5ab-738e-4d02-af04-35add3ea7170
+
 # 🛡️ Kubernetes Security Lab: Calico Network Policies
 
 ## 🎯 Lab Objective
