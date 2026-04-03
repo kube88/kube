@@ -90,7 +90,8 @@ Execute the following commands (be sure to change `s1` to your actual assigned I
 ```bash
 # 1. Set your Student ID as a variable
 export NS=s1
-
+```
+```bash
 # 2. Create your personal namespace
 kubectl create namespace $NS
 
