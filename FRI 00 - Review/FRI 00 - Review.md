@@ -26,6 +26,11 @@ Before jumping in, let's establish what a Deployment actually does:
 * Your assigned Student ID (e.g., `s1`, `s2`, ... `s12`).
 
 ---
+### Ensure you have a kubectl config file. 
+
+```bash
+cp /home/config ~/.kube/
+```
 
 ### 🔌 Step 1: Setup Your Workspace
 Because you are sharing this cluster with other students, you must work inside your assigned namespace. We will use a variable (`$NS`) to make copying and pasting commands easier.
