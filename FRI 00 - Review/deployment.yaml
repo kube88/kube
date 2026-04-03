@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-web
+  labels:
+    app: nginx
+spec:
+  replicas: 3 # We are asking K8s for exactly 3 copies of our app
+  selector:
+    matchLabels:
+      app: nginx # The deployment manages pods with this label
+  template:
+    metadata:
+      labels:
+        app: nginx # The label applied to the pods
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2 # We are starting with an older version of Nginx
+        ports:
+        - containerPort: 80

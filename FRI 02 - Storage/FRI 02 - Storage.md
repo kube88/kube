@@ -1,0 +1,255 @@
+
+***
+
+### 💾 Kubernetes Storage Lab: Persistent Volumes & Storage Classes
+
+🎯 **Lab Objective**
+In this lab, you will explore how Kubernetes handles stateful applications and persistent data. You will learn how to:
+* Authenticate with the vSphere cluster.
+* Explore and understand the available vSphere Storage Classes in your cluster.
+* Establish a secure workspace and context.
+* Create a Persistent Volume Claim (PVC) to dynamically provision storage.
+* Inspect both the local PVCs and the cluster-wide Persistent Volumes (PVs).
+* Deploy a Pod that mounts and consumes the persistent volume.
+* Prove data persistence by destroying and recreating the pod.
+* **Extension:** Dynamically expand the size of an existing volume.
+
+🧠 **Core Concepts: What are we actually doing?**
+Before jumping into the command line, it is important to understand how Kubernetes handles data:
+* **The Ephemeral Problem:** 💨 By default, containers are ephemeral. If a pod crashes or is deleted, any data written inside that container is destroyed. This is fine for web servers, but catastrophic for databases.
+* **Persistent Volumes (PV):** 💽 A PV is a piece of actual storage infrastructure (like a vSphere VMDK or vSAN object) that has been provisioned for the cluster to use. It exists independently of any single pod's lifecycle.
+* **Persistent Volume Claims (PVC):** 🎫 A PVC is a user's "request" for storage. You don't need to know the underlying storage tech; you simply claim "I need 1GB of fast storage," and Kubernetes finds or creates a PV to match.
+* **Storage Classes (SC):** 🏭 Storage Classes are profiles set up by administrators that define *how* storage should be created. They enable "Dynamic Provisioning," meaning a physical volume is automatically created on the backend the moment you submit a PVC.
+
+📋 **Prerequisites**
+* Access to the command line in your dedicated HOL instance.
+
+🔌 **Step 1: Connect to HOL Lab 2636**
+To begin, you need to authenticate with the vSphere environment to gain access to the Kubernetes cluster.
+Go to your Command Prompt CLI and execute the following command:
+
+```bash
+kubectl vsphere login --vsphere-username=administrator@wld.sso --server=https://10.1.0.2 --insecure-skip-tls-verify
+```
+🔑 **Password Prompt:** When prompted for a password, enter: `VMware123!VMware123!`
+
+💡 **What is happening here?** The `kubectl vsphere` plugin allows you to authenticate directly against the vCenter Single Sign-On (SSO). The `--insecure-skip-tls-verify` flag is used here for the lab environment to bypass certificate validation. Once authenticated, your local `kubeconfig` is updated with temporary credentials so you can issue commands to the cluster.
+
+🔎 **Step 2: Exploring Storage Classes**
+Before we request storage, we need to see what "profiles" (Storage Classes) are available to us. Because we are running on vSphere, these classes directly map to vCenter Storage Policies.
+
+Run the following command:
+```bash
+kubectl get storageclass
+```
+
+You should see the following list of available policies returned from the environment:
+```text
+NAME
+cluster-wld01-01a-vsan-storage-policy
+cluster-wld01-01a-vsan-storage-policy-latebinding
+k8s-harbor
+k8s-harbor-latebinding
+k8s-storage-policy
+k8s-storage-policy-latebinding
+management-storage-policy-encryption
+management-storage-policy-encryption-latebinding
+management-storage-policy-regular
+management-storage-policy-regular-latebinding
+management-storage-policy-single-node
+management-storage-policy-single-node-latebinding
+management-storage-policy-stretched-lite
+management-storage-policy-stretched-lite-latebinding
+management-storage-policy-thin
+management-storage-policy-thin-latebinding
+vm-encryption-policy
+vm-encryption-policy-latebinding
+vsan-default-storage-policy
+vsan-default-storage-policy-latebinding
+```
+
+💡 **What do these names mean?** * **`regular` vs `thin`:** A `regular` policy generally creates a standard, fully allocated disk. A `thin` policy uses "thin provisioning," meaning it tells vCenter to only consume physical hard drive space as data is actually written to the disk, which saves space on the underlying SAN/vSAN.
+* **`-latebinding`:** Normally, when you request a disk, K8s creates it immediately. However, if a policy has "late binding" (Wait For First Consumer), Kubernetes will wait to create the physical VMDK until a Pod is actually scheduled. This ensures the disk is created on the exact physical ESXi host where the Pod will run. 
+
+For our lab, we will be using the standard **`management-storage-policy-regular`**.
+
+🏗️ **Step 3: Setting Up Your Workspace**
+We will isolate our work into a dedicated namespace and configure our CLI context.
+
+Create the namespace and set your context:
+```bash
+kubectl create namespace storage-lab
+kubectl config set-context storage-context --current --namespace=storage-lab
+kubectl config use-context storage-context
+```
+
+🎫 **Step 4: Requesting Storage (Creating a PVC)**
+Now, let's ask Kubernetes for a persistent disk. We will explicitly tell Kubernetes which Storage Class to use.
+
+Create a file named `1-pvc.yaml`:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-data-claim
+spec:
+  storageClassName: management-storage-policy-regular 
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+Apply the claim:
+```bash
+kubectl apply -f 1-pvc.yaml
+```
+
+**Verify the PVC (The Request):**
+Let's list the Persistent Volume Claims in our namespace to ensure our request was successful.
+```bash
+kubectl get pvc
+```
+*You should see `my-data-claim` with a status of **Bound**.*
+
+**Verify the PV (The Physical Disk):**
+Now, let's look at the actual cluster-wide physical volumes that Kubernetes knows about. 
+```bash
+kubectl get pv
+```
+*Notice the output! You will see a dynamically generated PV with a long, random name (e.g., `pvc-1a2b3c4d...`). Look at the `CLAIM` column—you will see it is explicitly mapped to `storage-lab/my-data-claim`.*
+
+💡 **What is happening here?** We asked for `1Gi` using the "regular" policy (`get pvc`). Kubernetes saw this request, talked directly to vCenter, created a physical 1GB virtual disk, registered it as a Persistent Volume (`get pv`), and tied the two together. 
+
+📦 **Step 5: Deploying a Stateful Pod**
+Storage is useless without an application to consume it. Let's deploy an Nginx web server and mount our new volume into its web directory.
+
+Create a file named `2-stateful-pod.yaml`:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-server
+  labels:
+    app: web
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    volumeMounts:
+    - mountPath: "/usr/share/nginx/html" # 1. Where inside the container the disk lives
+      name: my-storage-volume
+  volumes:
+  - name: my-storage-volume
+    persistentVolumeClaim:
+      claimName: my-data-claim # 2. The K8s resource we are attaching
+```
+
+Apply the pod:
+```bash
+kubectl apply -f 2-stateful-pod.yaml
+```
+
+Wait a few moments and verify it is running:
+```bash
+kubectl get pods
+```
+
+🧪 **Step 6: Testing Data Persistence**
+Let's prove the data outlives the pod.
+
+**Test 1: Write data to the volume**
+Execute a command inside the running pod to create a custom HTML page:
+```bash
+kubectl exec data-server -- sh -c "echo '<h2>Success! This data is PERSISTENT!</h2>' > /usr/share/nginx/html/index.html"
+```
+
+Verify the data is there:
+```bash
+kubectl exec data-server -- cat /usr/share/nginx/html/index.html
+```
+✅ You should see the HTML string you just wrote.
+
+**Test 2: Destroy the Pod 💥**
+Simulate a node failure or an accidental deletion by destroying the pod:
+```bash
+kubectl delete pod data-server
+```
+
+**Test 3: Recreate the Pod and check the data**
+Re-apply the exact same pod definition. Kubernetes will schedule a new container and re-attach the existing PVC.
+```bash
+kubectl apply -f 2-stateful-pod.yaml
+```
+
+Wait for it to run (`kubectl get pods`), then check the data again:
+```bash
+kubectl exec data-server -- cat /usr/share/nginx/html/index.html
+```
+✅ **It SUCCEEDED!** Even though the original pod was completely destroyed, the underlying PV retained the data, and the new pod seamlessly picked up right where the old one left off.
+
+🌟 **Extension Lab: Dynamic Volume Expansion**
+Imagine your application becomes incredibly popular and you are running out of storage space on your 1Gi volume. Modern Kubernetes allows you to resize volumes on the fly without deleting them.
+
+Edit your existing `1-pvc.yaml` file and change the requested storage from `1Gi` to `2Gi`:
+```yaml
+  resources:
+    requests:
+      storage: 2Gi # Changed from 1Gi
+```
+
+Apply the updated PVC:
+```bash
+kubectl apply -f 1-pvc.yaml
+```
+
+Check the PVC and PV status to see the size change:
+```bash
+kubectl get pvc my-data-claim
+kubectl get pv
+```
+*(Note: It may take a minute for the underlying vSphere storage to process the expansion, but you will eventually see the capacity increase to 2Gi on both the PVC and the PV).*
+
+⚠️ **Common Mistakes & Troubleshooting**
+* **Pending PVCs:** ⏳ If your PVC stays in a `Pending` state, it means Kubernetes could not fulfill the request. This usually happens if you specify a `storageClassName` that doesn't exist, or if you use a `-latebinding` class and haven't deployed a pod yet to trigger the creation.
+* **Multi-Attach Errors:** 🚫 Because we used `ReadWriteOnce`, the volume can only be attached to one physical host at a time. If you try to deploy two pods on *different* physical nodes that both point to the same PVC, the second pod will fail to start with a "Multi-Attach Error". 
+* **Context Confusion:** 🤷‍♂️ If you get "NotFound" errors, verify you are working in the correct namespace using `kubectl config current-context`.
+
+🚀 **Bonus Concept: Scaling with StatefulSets**
+In this lab, we successfully attached a single Pod to a single PVC. But what if you wanted to run a database like MongoDB with 3 replicas for high availability? 
+
+If you used a standard Kubernetes `Deployment` and scaled it to 3 replicas, all three pods would try to mount our exact same `my-data-claim` PVC. Because the PVC is `ReadWriteOnce`, this would instantly crash two of the pods with a Multi-Attach error!
+
+**Enter the StatefulSet:** 🗄️
+A StatefulSet is an advanced Kubernetes controller designed specifically for databases and stateful applications. Instead of referencing a single existing PVC, a StatefulSet uses a `volumeClaimTemplate`. 
+When you tell a StatefulSet to scale to 3 replicas:
+1. It creates Pod 1 (`db-0`), and dynamically provisions a brand new, unique PVC just for that pod.
+2. It waits for `db-0` to be ready, then creates Pod 2 (`db-1`) and provisions a second unique PVC.
+3. It repeats this for Pod 3 (`db-2`).
+
+If `db-1` crashes, the StatefulSet restarts it and automatically reattaches its specific, original disk. This ensures sticky identity and ordered storage provisioning, making StatefulSets the gold standard for running databases in Kubernetes!
+
+🧹 **Lab Cleanup**
+To clean up your environment, delete the resources, switch your context back to the default, and delete the custom namespace:
+
+```bash
+# Delete the Pod and PVC
+kubectl delete -f 2-stateful-pod.yaml
+kubectl delete -f 1-pvc.yaml
+
+# Switch back to the default context
+kubectl config use-context default
+
+# Delete the lab namespace
+kubectl delete namespace storage-lab
+
+# Delete the custom context you created
+kubectl config delete-context storage-context
+```
+
+🎓 **Lab Recap & Review**
+* **Storage Classes map to Infrastructure:** 🏭 You saw how a PVC triggered the cluster to automatically provision a real, physical VMDK using a specific vCenter Storage Policy.
+* **PVs vs PVCs:** 💽 You successfully inspected both sides of the storage coin—the developer's request (the PVC in your namespace) and the administrator's actual disk (the global PV).
+* **Pods and Storage have separate lifecycles:** 🔄 You proved that destroying a container does not destroy its data.
+* **Storage is mutable (sometimes):** 📈 You learned that modern Kubernetes allows for dynamic volume expansion.

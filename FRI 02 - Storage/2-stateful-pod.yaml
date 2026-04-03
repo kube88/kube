@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-server
+  labels:
+    app: web
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    volumeMounts:
+    - mountPath: "/usr/share/nginx/html" # 1. Where inside the container the disk lives
+      name: my-storage-volume
+  volumes:
+  - name: my-storage-volume
+    persistentVolumeClaim:
+      claimName: my-data-claim # 2. The K8s resource we are attaching

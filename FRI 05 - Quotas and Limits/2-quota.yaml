@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: lab-hard-quota
+spec:
+  hard:
+    pods: "3"             # Maximum of 3 total pods allowed in this namespace
+    requests.cpu: "1"     # Total requested CPU across all pods cannot exceed 1 Core
+    requests.memory: 1Gi  # Total requested RAM cannot exceed 1 Gigabyte
+    limits.cpu: "2"       # Total CPU limits cannot exceed 2 Cores
+    limits.memory: 2Gi    # Total RAM limits cannot exceed 2 Gigabytes

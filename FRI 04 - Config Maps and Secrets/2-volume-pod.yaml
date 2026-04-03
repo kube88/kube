@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vol-test-pod
+spec:
+  containers:
+  - name: my-app
+    image: alpine
+    command: [ "sleep", "3600" ]
+    volumeMounts:
+    # 1. Where to place the ConfigMap files
+    - name: config-volume
+      mountPath: /etc/my-config
+    # 2. Where to place the Secret files
+    - name: secret-volume
+      mountPath: /etc/my-secrets
+      
+  volumes:
+  # 3. Defining the ConfigMap as a volume
+  - name: config-volume
+    configMap:
+      name: ui-config
+  # 4. Defining the Secret as a volume
+  - name: secret-volume
+    secret:
+      secretName: db-credentials

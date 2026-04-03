@@ -1,0 +1,15 @@
+apiVersion: crd.projectcalico.org/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-google-dns
+spec:
+  order: 10 # Lower numbers are evaluated first
+  selector: app == 'client' # Calico uses a slightly different selector syntax
+  types:
+  - Egress
+  egress:
+  - action: Deny # Native K8s CANNOT do this!
+    destination:
+      nets:
+      - "8.8.8.8/32"
+  - action: Allow # Allow everything else

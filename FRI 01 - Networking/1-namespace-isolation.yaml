@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: namespace-isolation
+spec:
+  podSelector: {} # 1. The Target: Applies this policy to ALL pods in our namespace
+  policyTypes:
+  - Ingress
+  - Egress
+  
+  # 2. The Ingress Rule (Incoming traffic)
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          environment: student-lab # ONLY allow traffic from namespaces with this label
+          
+  # 3. The Egress Rule (Outgoing traffic)
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          environment: student-lab # ONLY allow traffic to namespaces with this label
+  - ports: # 4. The DNS Exception
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
